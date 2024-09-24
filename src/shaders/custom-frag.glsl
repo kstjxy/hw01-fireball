@@ -13,7 +13,21 @@ precision highp float;
 
 uniform vec4 u_Color; // The color with which to render this instance of geometry.
 
+uniform vec4 c0;
+uniform vec4 c1;
+uniform vec4 c2;
+uniform vec4 c3;
+uniform vec4 c4;
+
 uniform float u_Time;
+uniform vec2 screenSize;
+uniform vec2 u_Mouse;
+uniform mat4 u_View;
+uniform vec2 u_Drag;
+
+uniform float u_Freq;
+uniform float u_Amp;
+uniform float u_Wave;
 
 // These are the interpolated values out of the rasterizer, so you can't know
 // their specific values without knowing the vertices that contributed to them
@@ -26,67 +40,162 @@ in vec4 fs_Pos;
 out vec4 out_Col; // This is the final output color that you will see on your
                   // screen for the pixel that is currently being processed.
 
-vec3 hash(vec3 p) {
-    return fract(sin(vec3(dot(p, vec3(100, 100, 100)),
-                          dot(p, vec3(200, 200, 200)),
-                          dot(p, vec3(300, 300, 300)))) *  43758.5453);
+const int _VolumeSteps = 40;
+const float _StepSize = 0.08; 
+const float _Density = 0.1;
+
+const float _SphereRadius = 0.2;
+const float _PulseAmp = 0.05;
+const float _PulseFreq = 3.0;
+const float _WaveStr = 0.5;
+const vec3 _NoiseAnim = vec3(-0.50, -1.0, 0.0);
+
+const mat3 m = mat3( 1.00,  0.80,  0.0,
+              0.0,  1.0, 0.0,
+              0.0, 0.0,  1.0 );
+
+float hash( float n )
+{
+    return fract(sin(n)*43758.5453);
 }
 
-float intrtpolate(float a, float b, float t) {
-    return a + t * (b - a);
+
+float sqlen(in vec3 p)
+{
+    return (p.x*p.x+p.y*p.y+p.z*p.z);
 }
 
-vec3 fade(vec3 t) {
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+float Heart(in vec3 p)
+{
+    p = vec3(p.z,p.y,p.x);
+    float h=p.x*p.x+p.y*p.y+2.0*p.z*p.z-1.0,pyyy=p.y*p.y*p.y;
+    float v=h*h*h-(p.x*p.x)*pyyy;
+    
+    vec3 g=vec3(6.0*p.x*h*h-2.0*p.x*pyyy,
+                    6.0*p.y*h*h-3.0*p.x*p.x*p.y*p.y-0.3*p.z*p.z*p.y*p.y,
+                    12.0*p.z*h*h-0.2*p.z*pyyy);
+
+    float pulse = (sin(u_Time*0.1f*_PulseFreq)-1.0)*4.0;
+	pulse = pow(8.0,pulse);
+    
+    return 5.0*(v/length(g)+pulse*_PulseAmp);
 }
 
-float noise(vec3 p) {
-    vec3 i = floor(p);
-    vec3 f = fract(p);
+float noise( in vec3 x )
+{
+    vec3 p = floor(x);
+    vec3 f = fract(x);
 
-    vec3 u = fade(f);
+    f = f*f*(3.0-2.0*f);
 
-    return intrtpolate(intrtpolate(intrtpolate(dot(hash(i + vec3(0.0, 0.0, 0.0)), f - vec3(0.0, 0.0, 0.0)),
-                          dot(hash(i + vec3(1.0, 0.0, 0.0)), f - vec3(1.0, 0.0, 0.0)), u.x),
-                      intrtpolate(dot(hash(i + vec3(0.0, 1.0, 0.0)), f - vec3(0.0, 1.0, 0.0)),
-                          dot(hash(i + vec3(1.0, 1.0, 0.0)), f - vec3(1.0, 1.0, 0.0)), u.x), u.y),
-                  intrtpolate(intrtpolate(dot(hash(i + vec3(0.0, 0.0, 1.0)), f - vec3(0.0, 0.0, 1.0)),
-                          dot(hash(i + vec3(1.0, 0.0, 1.0)), f - vec3(1.0, 0.0, 1.0)), u.x),
-                      intrtpolate(dot(hash(i + vec3(0.0, 1.0, 1.0)), f - vec3(0.0, 1.0, 1.0)),
-                          dot(hash(i + vec3(1.0, 1.0, 1.0)), f - vec3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+    float n = p.x + p.y*57.0 + 113.0*p.z;
+
+    float res = mix(mix(mix( hash(n+  0.0), hash(n+  1.0),f.x),
+                        mix( hash(n+ 57.0), hash(n+ 58.0),f.x),f.y),
+                    mix(mix( hash(n+113.0), hash(n+114.0),f.x),
+                        mix( hash(n+170.0), hash(n+171.0),f.x),f.y),f.z);
+    return res;
 }
 
-float fbm(vec3 p) {
-    float total = 0.0;
-    float amp = 0.5;
-    float freq = 1.0;
+float fbm( vec3 p )
+{
+    float f;
+    f = 0.5000*noise( p ); p = m*p*2.02;
+    f += 0.2500*noise( p ); p = m*p*2.03;
+    f += 0.1250*noise( p ); p = m*p*2.01;
+    f += 0.0625*noise( p );	
+    return f;
+}
 
-    for (int i = 0; i < 3; i++) {
-        total += amp * noise(p * freq);
-        amp *= 0.6;
-        freq *=  1.2;
-    }
+float distanceFunc(vec3 p, vec3 mousePos)
+{	
+	float d = sqlen(p) - _SphereRadius;
+    d = min(d, sin(d*u_Wave-u_Time*0.1f*_PulseFreq)+_WaveStr); 
+	d += fbm(p*u_Freq + _NoiseAnim*u_Time*0.1f) * u_Amp;
+    d = min(d,Heart(p));
 
-    return total;
+    float mouseEffect = exp(-length(p - mousePos) * 2.0);
+    d -= mouseEffect * 2.0;
+	return d;
+}
+
+vec4 gradient(float x)
+{	
+	x = clamp(x, 0.0, 0.999);
+	float t = fract(x*4.0);
+	vec4 c;
+	if (x < 0.25) {
+		c =  mix(c0, c1, t);
+	} else if (x < 0.5) {
+		c = mix(c1, c2, t);
+	} else if (x < 0.75) {
+		c = mix(c2, c3, t);
+	} else {
+		c = mix(c3, c4, t);		
+	}
+	return c;
+}
+
+vec4 shade(float d)
+{	
+	return gradient(d);
+}
+
+vec4 volumeFunc(vec3 p, vec3 mousePos)
+{
+	float d = distanceFunc(p, mousePos);
+	return shade(d);
+}
+
+vec4 rayMarch(vec3 rayOrigin, vec3 rayStep, out vec3 pos, vec3 mousePos)
+{
+	vec4 sum = vec4(0, 0, 0, 0);
+	pos = rayOrigin;
+	for(int i=0; i<_VolumeSteps; i++) {
+		vec4 col = volumeFunc(pos, mousePos);
+		col.a *= _Density;
+		col.rgb *= col.a;
+		sum = sum + col*(1.0 - sum.a);	
+
+        if (sum.a > 1.0) {
+            break;
+        }
+		pos += rayStep;
+	}
+	return sum;
 }
 
 
 void main()
 {
-    // Material base color (before shading)
-        vec4 diffuseColor = u_Color + vec4(0.2*sin(u_Time*0.1), 0.3*sin(u_Time*0.1), 0.4*sin(u_Time*0.1), 0);
+    out_Col = fs_Col;
+    float screen_x=screenSize.x;
+    float screen_y=screenSize.y;
 
-        // Calculate the diffuse term for Lambert shading
-        float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));
-        // Avoid negative lighting values
-        // diffuseTerm = clamp(diffuseTerm, 0, 1);
+    vec2 p = (gl_FragCoord.xy / vec2(screen_x,screen_y))*2.0-1.0;
 
-        float ambientTerm = 0.2;
+    p.x *= screen_x/ screen_y;
+    
+    float roty = -( u_Drag.x / screen_x)*4.0;
+    float rotx = ( u_Drag.y / screen_y)*4.0;
+    
 
-        float lightIntensity = diffuseTerm + ambientTerm;   //Add a small float value to the color multiplier
-                                                            //to simulate ambient lighting. This ensures that faces that are not
-                                                            //lit by our point light are not completely black.
+    float zoom = 4.0;
 
-        // Compute final shaded color
-        out_Col = vec4 (diffuseColor.rgb * lightIntensity * (0.5-abs(fbm(fs_Pos.xyz))) , diffuseColor.a);
+    vec3 ro = zoom*normalize(vec3(cos(roty), cos(rotx), sin(roty)));
+    vec3 ww = normalize(vec3(0.0,0.0,0.0) - ro);
+    vec3 uu = normalize(cross( vec3(0.0,1.0,0.0), ww ));
+    vec3 vv = normalize(cross(ww,uu));
+    vec3 rd = normalize( p.x*uu + p.y*vv + 1.5*ww );
+
+    vec2 mouseNDC = (u_Mouse / screenSize) * 2.0 - 1.0;
+    mouseNDC.y = -mouseNDC.y;
+    vec3 mouseRayDir = normalize(mouseNDC.x * uu + mouseNDC.y * vv + 1.5 * ww);
+    float mouseDistance = 2.0;
+    vec3 mousePos = ro + mouseRayDir * mouseDistance;
+
+    vec3 hitPos;
+    ro += rd*2.0;
+    vec4 col = rayMarch(ro, rd*_StepSize, hitPos, mousePos);
+    out_Col = col;
 }

@@ -19,6 +19,8 @@ uniform mat4 u_ViewProj;    // The matrix that defines the camera's transformati
                             // We've written a static matrix for you to use for HW2,
                             // but in HW3 you'll have to generate one yourself
 
+uniform mat4 u_Proj;
+
 uniform float u_Time;
 
 in vec4 vs_Pos;             // The array of vertex positions passed to the shader
@@ -42,7 +44,6 @@ float hash(vec3 p) {
 void main()
 {
     fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation
-
     mat3 invTranspose = mat3(u_ModelInvTr);
     fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);          // Pass the vertex normals to the fragment shader for interpolation.
                                                             // Transform the geometry's normals by the inverse transpose of the
@@ -51,12 +52,12 @@ void main()
                                                             // the model matrix.
 
 
-    vec4 modelposition = u_Model * vs_Pos;   // Temporarily store the transformed vertex positions for use below
-    fs_Pos = modelposition;
+    //vec4 modelposition = u_Model * vs_Pos;   // Temporarily store the transformed vertex positions for use below
+    fs_Pos = vs_Pos;
 
-    fs_LightVec = modelposition;  // Compute the direction in which the light source lies
+    fs_LightVec = vs_Pos;  // Compute the direction in which the light source lies
 
-    vec4 trans = modelposition;
+    vec4 trans = u_Model*vs_Pos;
 
     // float transX = 0.06 * hash(modelposition.xyz*2.5) * sin(modelposition.y + (u_Time * 0.2));
     // float transY = 0.12 * hash(modelposition.xyz*4.3) * cos(modelposition.z + (u_Time * 0.23));
@@ -67,6 +68,6 @@ void main()
     // trans.y += transY * 3.0;
     // trans.z += transZ * 2.5;
 
-    gl_Position = u_ViewProj * trans;// gl_Position is a built-in variable of OpenGL which is
+    gl_Position = vs_Pos;// gl_Position is a built-in variable of OpenGL which is
                                              // used to render the final positions of the geometry's vertices
 }

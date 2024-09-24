@@ -42,6 +42,8 @@ class Square extends Drawable {
 
     console.log(`Created square`);
   }
+
+  
 };
 
 export default Square;
