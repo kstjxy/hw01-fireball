@@ -51,22 +51,12 @@ void main()
                                                             // perpendicular to the surface after the surface is transformed by
                                                             // the model matrix.
 
-
-    //vec4 modelposition = u_Model * vs_Pos;   // Temporarily store the transformed vertex positions for use below
     fs_Pos = vs_Pos;
 
-    fs_LightVec = vs_Pos;  // Compute the direction in which the light source lies
+    fs_LightVec = vs_Pos;
 
     vec4 trans = u_Model*vs_Pos;
 
-    // float transX = 0.06 * hash(modelposition.xyz*2.5) * sin(modelposition.y + (u_Time * 0.2));
-    // float transY = 0.12 * hash(modelposition.xyz*4.3) * cos(modelposition.z + (u_Time * 0.23));
-    // float transZ = 0.15 * hash(modelposition.xyz*3.1) * cos(modelposition.x + (u_Time * 0.25));
-
-
-    // trans.x += transX * 2.75;
-    // trans.y += transY * 3.0;
-    // trans.z += transZ * 2.5;
 
     gl_Position = vs_Pos;// gl_Position is a built-in variable of OpenGL which is
                                              // used to render the final positions of the geometry's vertices
